@@ -6,6 +6,7 @@
 #              copying and pasting an example.
 
 require 'rexle'
+require 'rexle-builder'
 
 class JsAjaxWizard
 
@@ -104,4 +105,3 @@ function ajaxResponse#{i+1}(xhttp) {
   end
 
 end
-
