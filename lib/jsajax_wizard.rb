@@ -12,7 +12,7 @@ class JsAjaxWizard
 
   def initialize(html: '', debug: false)
 
-    @debug = debug
+    @html, @debug = html, debug
     @requests = []
 
   end
@@ -49,9 +49,17 @@ class JsAjaxWizard
       # e = element e.g. {type: 'button', event: 'onclick'} 
       # e2 = target_element: {id: '', property: :innerHTML}
 
-      a = if e[:type] == 'button' then
+      a = if e[:type].to_s == 'button' then
+      
+        e[:event] = :onclick unless e[:event]
         ["<button type='button' %s='ajaxCall%s()'>Change Content</button>" \
-          % [e[:event], i+1]]
+          % [e[:event].to_s, i+1]]
+        
+      elsif e[:type].to_s == 'text' then
+        
+        e[:event] = :onkeyup unless e[:event]
+        ["<input type='text' %s='ajaxCall%s(this)'/>" % [e[:event].to_s, i+1]]
+        
       else
         ''
       end
@@ -86,17 +94,31 @@ function ajaxRequest(url, cFunction) {
 EOF
 
     funcs_defined = @requests.map.with_index do |x,i|
-
+      
+      a = []
       server, element, target_element = x
+      
+      a << if element[:type] == 'text' then
+        "
+function ajaxCall#{i+1}() {
+  ajaxRequest('#{server}', ajaxResponse#{i+1})
+}
+"
+      else
 "
 function ajaxCall#{i+1}() {
   ajaxRequest('#{server}', ajaxResponse#{i+1})
 }
+"
+      end
 
+a << "
 function ajaxResponse#{i+1}(xhttp) {
   document.getElementById('#{target_element[:id]}').innerHTML = xhttp.responseText;
 }
-" 
+"
+
+      a.join
     end
 
     s = func_calls.join("\n") + "\n\n" + ajax + "\n\n" + funcs_defined.join
