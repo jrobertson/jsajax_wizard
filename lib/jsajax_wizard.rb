@@ -9,8 +9,9 @@ require 'rexle'
 require 'rexle-builder'
 
 class JsAjaxWizard
+  using ColouredText
 
-  def initialize(html: '', debug: false)
+  def initialize(html='', debug: false)
 
     @html, @debug = html, debug
     @requests = []
@@ -22,25 +23,67 @@ class JsAjaxWizard
   end
 
   def to_html()
-
-    a = RexleBuilder.build do |xml|
-      xml.html do 
-        xml.head do
-          xml.meta name: "viewport", content: \
-              "width=device-width, initial-scale=1"
-          xml.style "\nbody {font-family: Arial;}\n\n"
-        end
-        xml.body build_html + "\n" + build_js()
-      end
-    end
-
-    doc = Rexle.new(a)
     
+    html = @html.empty? ? build_html : @html
+    
+    puts 'html: ' + html.inspect if @debug
+    
+    doc = Rexle.new(html)
+    puts 'doc.xml: ' + doc.xml(pretty: true) if @debug
+    add_events(doc)
+    doc.root.element('body').add(Rexle.new(build_js))    
+    
+    doc.xml    
   end
 
   private
+  
+  def add_events(doc)    
+    
+    @requests.each.with_index do |x,i|
+      
+      element  = x[1]
+      
+      selector = if element[:id] then
+        '#' + element[:id]
+      elsif element[:type]
+        "*[type=%s]" % element[:type]
+      end
+      
+      if @debug then
+        puts "selector: *|%s|*" % selector.inspect 
+        puts 'doc: ' + doc.xml(pretty: true).inspect
+      end
+      
+      e = doc.at_css(selector)
+      puts ('e: ' + e.inspect).debug if @debug
+      
+      func = 'ajaxCall' + (i+1).to_s
+      event = e.attributes[:type] == 'button' ? func + '()' : func + '(this)'
+      
+      puts ('element: ' + element.inspect).debug if @debug
+      
+      key = if element[:event] then
+      
+        if element[:event].to_sym == :on_enter then
+          event = func + '(event.keyCode, this)'
+          :onkeyup
+        else
+          element[:event].to_sym
+        end
+        
+      else
+        e.attributes[:type] == 'button' ? :onclick : :onkeyup
+      end
+      
+      e.attributes[key] = event
+      
+    end
+    
+    doc
+  end
 
-  def build_html()
+  def build_elements()
 
     html = @requests.map.with_index do |x,i|
 
@@ -51,14 +94,11 @@ class JsAjaxWizard
 
       a = if e[:type].to_s == 'button' then
       
-        e[:event] = :onclick unless e[:event]
-        ["<button type='button' %s='ajaxCall%s()'>Change Content</button>" \
-          % [e[:event].to_s, i+1]]
+        ["<button type='button''>Change Content</button>"]
         
       elsif e[:type].to_s == 'text' then
         
-        e[:event] = :onkeyup unless e[:event]
-        ["<input type='text' %s='ajaxCall%s(this)'/>" % [e[:event].to_s, i+1]]
+        ["<input type='text'/>"]
         
       else
         ''
@@ -69,8 +109,25 @@ class JsAjaxWizard
 
     end
 
-    html.join("\n")
+    r = html.join("\n")
+    puts 'r: ' + r.inspect if @debug
+    r
 
+  end
+  
+  def build_html()
+
+    RexleBuilder.build do |xml|
+      xml.html do 
+        xml.head do
+          xml.meta name: "viewport", content: \
+              "width=device-width, initial-scale=1"
+          xml.style "\nbody {font-family: Arial;}\n\n"
+        end
+        xml.body build_elements
+      end
+    end
+    
   end
 
   def build_js()
@@ -99,11 +156,26 @@ EOF
       server, element, target_element = x
       
       a << if element[:type] == 'text' then
+      
+        if element[:event].to_sym == :on_enter then
         "
-function ajaxCall#{i+1}() {
-  ajaxRequest('#{server}', ajaxResponse#{i+1})
+function ajaxCall#{i+1}(keyCode, e) {
+  
+  if (keyCode==13){
+    ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
+  }
+  
+  
 }
 "
+        else
+        "
+function ajaxCall#{i+1}(e) {
+  ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
+}
+"
+        end
+        
       else
 "
 function ajaxCall#{i+1}() {
