@@ -4,6 +4,24 @@
 
 # description: Makes building an AJAX web page easier than 
 #              copying and pasting an example.
+# examples:
+#
+# jaw = JsAjaxWizard.new
+#
+#
+# AJAX triggered from a button press
+# jaw.add_request server: 'hello', element: {type: 'button', 
+#         event: 'onclick'}, target_element: {id: 'demo', property: :innerHTML}
+#
+# AJAX triggered from an onkeyup event
+# jaw.add_request server: 'hello', element: {type: 'text'}, 
+#         target_element: {id: 'demo', property: :innerHTML}
+#
+# AJAX triggered from a timer event
+# jaw.add_request server: 'hello', element: {type: 'timer', 
+#         interval: '5000'}, target_element: {id: 'demo', property: :innerHTML}
+
+
 
 require 'rexle'
 require 'rexle-builder'
@@ -56,6 +74,7 @@ class JsAjaxWizard
       end
       
       e = doc.at_css(selector)
+      next unless e
       puts ('e: ' + e.inspect).debug if @debug
       
       func = 'ajaxCall' + (i+1).to_s
@@ -101,7 +120,7 @@ class JsAjaxWizard
         ["<input type='text'/>"]
         
       else
-        ''
+        ['']
       end
 
       a << "<div id='%s'></div>" % [e2[:id]]
@@ -163,8 +182,7 @@ function ajaxCall#{i+1}(keyCode, e) {
   
   if (keyCode==13){
     ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
-  }
-  
+  }  
   
 }
 "
@@ -176,6 +194,13 @@ function ajaxCall#{i+1}(e) {
 "
         end
         
+      elsif element[:type] == 'timer'
+        "
+setInterval(
+  function() {
+    ajaxRequest('#{server}', ajaxResponse#{i+1})
+  }, #{element[:interval]});
+"        
       else
 "
 function ajaxCall#{i+1}() {
