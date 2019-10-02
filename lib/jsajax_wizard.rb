@@ -23,6 +23,7 @@
 
 
 
+
 require 'rexle'
 require 'rexle-builder'
 
@@ -31,8 +32,11 @@ class JsAjaxWizard
 
   def initialize(html='', debug: false)
 
-    @html, @debug = html, debug
+    @html, @debug = RXFHelper.read(html).first, debug        
     @requests = []
+    
+    # search for AJAX placeholders
+    scan_requests(@html)    
 
   end
 
@@ -65,15 +69,16 @@ class JsAjaxWizard
       selector = if element[:id] then
         '#' + element[:id]
       elsif element[:type]
-        "*[type=%s]" % element[:type]
+        "*[@type='%s']" % element[:type]
       end
       
       if @debug then
-        puts "selector: *|%s|*" % selector.inspect 
+        puts ("selector: %s" % selector.inspect).debug
         puts 'doc: ' + doc.xml(pretty: true).inspect
       end
       
       e = doc.at_css(selector)
+      puts ('e: ' + e.inspect).debug if @debug
       next unless e
       puts ('e: ' + e.inspect).debug if @debug
       
@@ -221,6 +226,56 @@ function ajaxResponse#{i+1}(xhttp) {
     s = func_calls.join("\n") + "\n\n" + ajax + "\n\n" + funcs_defined.join
     "\n  <script>\n%s\n  </script>\n" % s
 
+  end
+  
+  # find the ajax requests
+  #
+  def scan_requests(html)
+    
+
+    a = html.scan(/\$\[([^\]])+\]\(([^\)]+)/)
+
+    a.each do |var, url|
+
+      #== fetch the trigger element details
+
+      tag = html[/<[^<]+\$\[([^\]])+\]\(#{url}[^\>]+>/]
+      element_name  = tag[/(?<=<)\w+/]
+      event = tag[/(\w+)=["']\$\[([^\]])+\]\(#{url}/,1]
+
+      # is there an id?
+      id = tag[/(?<=id=["'])[^"']+/]
+
+      h2 = if id then
+        {id: id}
+      else
+        {type: element_name.to_sym }
+      end
+
+      element = h2.merge(event: event)
+
+      #== fetch the target element details
+
+      tag2 = html[/<[^<]+>\$#{var}</]
+      # is there an id?
+      target_id = tag2[/(?<=id=["'])[^"']+/]
+
+      inner_html = tag2 =~ />\$#{var}</
+
+      property = if inner_html then
+      
+        html.sub!(/>\$#{var}</,'')
+        :innerHTML
+        
+      end
+
+      target_element = {id: target_id, property: property}
+
+      add_request(server: url, element: element, 
+                  target_element: target_element)
+      
+    end
+    
   end
 
 end

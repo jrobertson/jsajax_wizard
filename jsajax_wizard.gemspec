@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'jsajax_wizard'
-  s.version = '0.2.1'
+  s.version = '0.2.2'
   s.summary = 'Makes building an AJAX web page easier than copying and ' + 
       'pasting an example. '
   s.authors = ['James Robertson']
