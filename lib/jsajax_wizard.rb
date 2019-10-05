@@ -21,7 +21,10 @@
 # jaw.add_request server: 'hello', element: {type: 'timer', 
 #         interval: '5000'}, target_element: {id: 'demo', property: :innerHTML}
 
-
+# 03 Oct 2019 : An HTML document can be passed in containing an
+#               AJAX placeholder e.g. 
+#            <button onclick='$[x][/someurl/]'></button><div id='demo'>$x</div>
+#
 
 
 require 'rexle'
@@ -264,7 +267,7 @@ function ajaxResponse#{i+1}(xhttp) {
 
       property = if inner_html then
       
-        html.sub!(/>\$#{var}</,'')
+        html.sub!(/>\$#{var}</,'>&nbsp;<')
         :innerHTML
         
       end
