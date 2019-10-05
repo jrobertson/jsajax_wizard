@@ -43,8 +43,8 @@ class JsAjaxWizard
 
   end
 
-  def add_request(server: '', element: {}, target_element: {})
-    @requests << [server, element, target_element]
+  def add_request(server: '', element: {}, target_element: {}, target_eval: false)
+    @requests << [server, element, target_eval || target_element ]
   end
 
   def to_html()
@@ -130,8 +130,8 @@ class JsAjaxWizard
       else
         ['']
       end
-
-      a << "<div id='%s'></div>" % [e2[:id]]
+      
+      a << "<div id='%s'></div>" % [e2[:id]] if e2.is_a? Hash
       a.join("\n")
 
     end
@@ -180,7 +180,7 @@ EOF
     funcs_defined = @requests.map.with_index do |x,i|
       
       a = []
-      server, element, target_element = x
+      server, element, target = x
       
       a << if element[:type] == 'text' then
       
@@ -219,9 +219,21 @@ function ajaxCall#{i+1}() {
 
 a << "
 function ajaxResponse#{i+1}(xhttp) {
-  document.getElementById('#{target_element[:id]}').innerHTML = xhttp.responseText;
+"      
+      if target.is_a? Hash and target[:id] then
+        
+        a << "  document.getElementById('#{target[:id]}')" + 
+            ".innerHTML = xhttp.responseText;"
+  
+      else
+        
+        a << "  eval(xhttp.responseText);"
+        
+      end
+      
+a << "
 }
-"
+"      
 
       a.join
     end
