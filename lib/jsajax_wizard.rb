@@ -26,6 +26,9 @@
 #            <button onclick='$[x][/someurl/]'></button><div id='demo'>$x</div>
 #
 
+# AJAX triggered from a button press with the text response passed to eval
+# jaw.add_request server: 'hello', element: {type: 'button', event: 'onclick'}, target_eval: true
+
 
 require 'rexle'
 require 'rexle-builder'
@@ -67,7 +70,8 @@ class JsAjaxWizard
     
     @requests.each.with_index do |x,i|
       
-      element  = x[1]
+      puts ('x: ' + x.inspect).debug if @debug
+      element = x[1]
       
       selector = if element[:id] then
         '#' + element[:id]
@@ -248,15 +252,15 @@ a << "
   def scan_requests(html)
     
 
-    a = html.scan(/\$\[([^\]])+\]\(([^\)]+)/)
+    a = html.scan(/\$\[([^\]]+)?\]\(([^\)]+)/)
 
     a.each do |var, url|
 
       #== fetch the trigger element details
 
-      tag = html[/<[^<]+\$\[([^\]])+\]\(#{url}[^\>]+>/]
+      tag = html[/<[^<]+\$\[([^\]]+)?\]\(#{url}[^\>]+>/]
       element_name  = tag[/(?<=<)\w+/]
-      event = tag[/(\w+)=["']\$\[([^\]])+\]\(#{url}/,1]
+      event = tag[/(\w+)=["']\$\[([^\]]+)?\]\(#{url}/,1]
 
       # is there an id?
       id = tag[/(?<=id=["'])[^"']+/]
@@ -268,6 +272,13 @@ a << "
       end
 
       element = h2.merge(event: event)
+
+      if var.nil? then
+        
+        add_request(server: url, element: element, target_eval: true)
+        next
+        
+      end
 
       #== fetch the target element details
 
