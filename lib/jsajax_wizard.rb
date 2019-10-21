@@ -29,6 +29,11 @@
 # AJAX triggered from a button press with the text response passed to eval
 # jaw.add_request server: 'hello', element: {type: 'button', event: 'onclick'}, target_eval: true
 
+# AJAX triggered from a speech recognition result
+# jaw.add_request server: 'hello', trigger: 'recognition.onresult', target_eval: true
+
+
+
 
 require 'rexle'
 require 'rexle-builder'
@@ -46,8 +51,10 @@ class JsAjaxWizard
 
   end
 
-  def add_request(server: '', element: {}, target_element: {}, target_eval: false)
-    @requests << [server, element, target_eval || target_element ]
+  def add_request(server: '', element: {}, trigger: nil, target_element: {}, 
+                  target_eval: false)
+    type = element.any? ? [:element, element] : [:trigger, trigger]
+    @requests << [server, type, target_element, target_eval ]
   end
 
   def to_html()
@@ -59,56 +66,100 @@ class JsAjaxWizard
     doc = Rexle.new(html)
     puts 'doc.xml: ' + doc.xml(pretty: true) if @debug
     add_events(doc)
-    doc.root.element('body').add(Rexle.new(build_js))    
+    js = build_js(doc)
+    doc.root.element('body').add(Rexle.new(js))    
     
     doc.xml    
   end
 
   private
   
+  def add_element_function(element, i, server, target, target_eval)
+    
+    puts ('element: ' + element.inspect).debug if @debug
+    puts '::' + [element, i, server, target, target_eval].inspect if @debug
+    
+    a = []
+    
+    a << if element.is_a?(Hash) then
+    
+      if element[:type] == 'text' then
+    
+        if element[:event].to_sym == :on_enter then
+      "
+function ajaxCall#{i+1}(keyCode, e) {
+
+if (keyCode==13){
+  ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
+}  
+
+}
+"
+        else
+      "
+function ajaxCall#{i+1}(e) {
+  ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
+}
+"
+        end
+        
+      elsif element[:type] == 'timer'
+      "
+setInterval(
+function() {
+  ajaxRequest('#{server}', ajaxResponse#{i+1})
+}, #{element[:interval]});
+"        
+      else
+"
+function ajaxCall#{i+1}() {
+  ajaxRequest('#{server}', ajaxResponse#{i+1})
+}
+"  
+      end
+      
+    else
+      
+ "
+function ajaxCall#{i+1}(s) {
+  ajaxRequest('#{server}' + escape(s), ajaxResponse#{i+1})
+}
+"     
+    end
+
+a << "
+function ajaxResponse#{i+1}(xhttp) {
+"      
+
+    if target.is_a?(Hash) and target[:id] then
+      
+      a << "  document.getElementById('#{target[:id]}')" + 
+          ".innerHTML = xhttp.responseText;"
+    end
+
+    if target_eval then
+      
+      a << "  eval(xhttp.responseText);"
+      
+    end
+
+a << "
+}
+"      
+
+    a.join
+
+  
+  end
+  
   def add_events(doc)    
     
     @requests.each.with_index do |x,i|
       
-      puts ('x: ' + x.inspect).debug if @debug
-      element = x[1]
+      puts ('request x: ' + x.inspect).debug if @debug
       
-      selector = if element[:id] then
-        '#' + element[:id]
-      elsif element[:type]
-        "*[@type='%s']" % element[:type]
-      end
-      
-      if @debug then
-        puts ("selector: %s" % selector.inspect).debug
-        puts 'doc: ' + doc.xml(pretty: true).inspect
-      end
-      
-      e = doc.at_css(selector)
-      puts ('e: ' + e.inspect).debug if @debug
-      next unless e
-      puts ('e: ' + e.inspect).debug if @debug
-      
-      func = 'ajaxCall' + (i+1).to_s
-      event = e.attributes[:type] == 'button' ? func + '()' : func + '(this)'
-      
-      puts ('element: ' + element.inspect).debug if @debug
-      
-      key = if element[:event] then
-      
-        if element[:event].to_sym == :on_enter then
-          event = func + '(event.keyCode, this)'
-          :onkeyup
-        else
-          element[:event].to_sym
-        end
-        
-      else
-        e.attributes[:type] == 'button' ? :onclick : :onkeyup
-      end
-      
-      e.attributes[key] = event
-      
+      method(('modify_' + x[1].first.to_s).to_sym).call(x[1].last, doc, i)
+            
     end
     
     doc
@@ -118,7 +169,9 @@ class JsAjaxWizard
 
     html = @requests.map.with_index do |x,i|
 
-      e, e2 = x[1..-1]
+      raw_e, e2 = x[1..-1]
+      
+      e = raw_e.last
       
       # e = element e.g. {type: 'button', event: 'onclick'} 
       # e2 = target_element: {id: '', property: :innerHTML}
@@ -161,11 +214,8 @@ class JsAjaxWizard
     
   end
 
-  def build_js()
+  def build_js(doc)
 
-    func_calls = @requests.length.times.map do |i|
-      "// ajaxCall#{i+1}();"
-    end
 
 ajax=<<EOF
 function ajaxRequest(url, cFunction) {
@@ -183,68 +233,79 @@ EOF
 
     funcs_defined = @requests.map.with_index do |x,i|
       
-      a = []
-      server, element, target = x
+      puts ('x: ' + x.inspect).debug if @debug
+      server, raw_type, target, target_eval = x
       
-      a << if element[:type] == 'text' then
-      
-        if element[:event].to_sym == :on_enter then
-        "
-function ajaxCall#{i+1}(keyCode, e) {
-  
-  if (keyCode==13){
-    ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
-  }  
-  
-}
-"
-        else
-        "
-function ajaxCall#{i+1}(e) {
-  ajaxRequest('#{server}' + e.value, ajaxResponse#{i+1})
-}
-"
-        end
-        
-      elsif element[:type] == 'timer'
-        "
-setInterval(
-  function() {
-    ajaxRequest('#{server}', ajaxResponse#{i+1})
-  }, #{element[:interval]});
-"        
-      else
-"
-function ajaxCall#{i+1}() {
-  ajaxRequest('#{server}', ajaxResponse#{i+1})
-}
-"
-      end
-
-a << "
-function ajaxResponse#{i+1}(xhttp) {
-"      
-      if target.is_a? Hash and target[:id] then
-        
-        a << "  document.getElementById('#{target[:id]}')" + 
-            ".innerHTML = xhttp.responseText;"
-  
-      else
-        
-        a << "  eval(xhttp.responseText);"
-        
+      if raw_type.first == :trigger then
+        modify_trigger_function(raw_type.last, i, server, doc)
       end
       
-a << "
-}
-"      
-
-      a.join
+      add_element_function(raw_type.last, i, server, target, target_eval)
+      
     end
+    
+    s = "\n\n" + ajax + "\n\n" + funcs_defined.join
+    "\n  <script>\n%s\n  </script>\n" % s  
 
-    s = func_calls.join("\n") + "\n\n" + ajax + "\n\n" + funcs_defined.join
-    "\n  <script>\n%s\n  </script>\n" % s
-
+  end
+  
+  def modify_element(element, doc, i)
+    
+    selector = if element[:id] then
+      '#' + element[:id]
+    elsif element[:type]
+      "*[@type='%s']" % element[:type]
+    end
+    
+    if @debug then
+      puts ("selector: %s" % selector.inspect).debug
+      puts 'doc: ' + doc.xml(pretty: true).inspect
+    end
+    
+    e = doc.at_css(selector)
+    puts ('e: ' + e.inspect).debug if @debug
+    return unless e
+    puts ('e: ' + e.inspect).debug if @debug
+    
+    func = 'ajaxCall' + (i+1).to_s
+    event = e.attributes[:type] == 'button' ? func + '()' : func + '(this)'
+    
+    puts ('element: ' + element.inspect).debug if @debug
+    
+    key = if element[:event] then
+    
+      if element[:event].to_sym == :on_enter then
+        event = func + '(event.keyCode, this)'
+        :onkeyup
+      else
+        element[:event].to_sym
+      end
+      
+    else
+      e.attributes[:type] == 'button' ? :onclick : :onkeyup
+    end
+    
+    e.attributes[key] = event    
+  end
+  
+  def modify_trigger(element, doc, i)
+  end
+  
+  def modify_trigger_function(trigger, i, server, doc)
+    
+    doc.root.xpath('//script').each do |script|
+      puts 'script: ' + script.inspect
+      s = script.text.to_s
+      
+      script.text = s.sub(/#{trigger} = function\(\) {[^}]+/) {|x|
+        a = x.lines
+        indent = a[1][/\s+/]
+        a[0..-2].join + indent + "ajaxCall#{i+1}(event.results[0][0]." + 
+                                                       "transcript);\n" + a[-1]
+      }
+      
+    end
+    
   end
   
   # find the ajax requests
