@@ -36,6 +36,7 @@
 
 
 require 'rexle'
+require 'rxfhelper'
 require 'rexle-builder'
 
 class JsAjaxWizard
